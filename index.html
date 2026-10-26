@@ -47,6 +47,46 @@
   .chip.oya { border-color: var(--accent); color: var(--accent); }
   .prompt { margin: 0 0 12px; }
 
+  .tabs { display: flex; background: rgba(0,0,0,.25); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+  .tabs button { flex: 1; border: 0; background: transparent; color: #cfe0d8; font: inherit; font-weight: 700; padding: 9px 0; border-radius: 9px; cursor: pointer; }
+  .tabs button.on { background: var(--card); color: var(--ink); }
+  [hidden] { display: none !important; }
+
+  /* 牌姿 */
+  .situ { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .chip.sm { font-size: .8rem; padding: 3px 8px; font-weight: 700; display: inline-flex; align-items: center; gap: 3px; }
+  .chip.riichi { border-color: var(--gold); color: #8a6a1f; }
+  .hand-row { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 10px; --tw: clamp(19px, 5.3vw, 30px); }
+  .tiles { display: flex; gap: 1px; }
+  .win, .meld { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .win small, .meld small { font-size: .7rem; color: var(--muted); }
+  .melds { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; --tw: clamp(19px, 5.3vw, 30px); }
+  .tile {
+    width: var(--tw, 22px); height: calc(var(--tw, 22px) * 1.38);
+    background: #fff; border: 1px solid #bdb59f; border-radius: 3px; box-shadow: 0 2px 0 #cfc6b0;
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", serif; line-height: 1.05; color: var(--ink);
+  }
+  .tile b { font-size: calc(var(--tw, 22px) * .58); font-weight: 700; }
+  .tile i { font-style: normal; font-size: calc(var(--tw, 22px) * .48); }
+  .tile.suit0 i { color: #c0392b; }
+  .tile.suit1 i { color: #1f5fa8; }
+  .tile.suit2 i { color: #1d7a45; }
+  .tile.honor { font-size: calc(var(--tw, 22px) * .7); font-weight: 700; }
+  .tile.chun { color: #c0392b; }
+  .tile.hatsu { color: #1d7a45; }
+  .tile.haku::after { content: ''; width: 55%; height: 60%; border: 2px solid #7fa3c9; border-radius: 2px; }
+  .tile.back { background: #2f7d5c; border-color: #1f5a41; box-shadow: 0 2px 0 #1f5a41; }
+  .tile.agari { box-shadow: 0 2px 0 var(--gold), 0 0 0 2px var(--gold); }
+  .tile.mini { --tw: 16px; box-shadow: none; }
+
+  .breakdown { margin-top: 10px; background: var(--card-sub); border-radius: 8px; padding: 8px 12px; font-size: .9rem; }
+  .breakdown ul { list-style: none; margin: 0; padding: 0; }
+  .breakdown li { display: flex; justify-content: space-between; padding: 2px 0; }
+  .total-line { margin: 4px 0 0; padding-top: 4px; border-top: 1px dashed var(--line); font-weight: 700; text-align: right; }
+  .fu-line { margin: 4px 0 0; font-size: .8rem; color: var(--muted); }
+  .rules { font-size: .75rem; color: var(--muted); margin: 12px 0 0; }
+
   .fields { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
   .field { display: flex; flex-direction: column; font-size: .8rem; color: var(--muted); flex: 1; min-width: 120px; }
   .field input {
@@ -86,6 +126,11 @@
     <p class="sub">答えを出すだけでなく、どこで間違えたかを記録して、自分の苦手を見つけます。</p>
   </header>
 
+  <div class="tabs" id="tabs">
+    <button type="button" data-tab="hanfu">翻・符から</button>
+    <button type="button" data-tab="hand">牌姿から</button>
+  </div>
+
   <div class="controls">
     <div class="seg" id="modeSeg">
       <button type="button" data-mode="random">ランダム</button>
@@ -96,7 +141,7 @@
   <p class="focus-note" id="focusNote"></p>
 
   <section class="panel">
-    <div class="q-chips" id="chips"></div>
+    <div id="chips"></div>
     <p class="prompt" id="prompt"></p>
     <form id="form" autocomplete="off">
       <div class="fields" id="fields"></div>
@@ -104,11 +149,12 @@
       <p class="msg" id="msg"></p>
     </form>
     <div class="result" id="result" hidden></div>
+    <p class="rules" id="handRules" hidden>赤ドラ・裏ドラ・一発・海底などの偶然役はありません。役満の手は出題しません。</p>
   </section>
 
   <section class="panel">
     <div class="stats-head">
-      <h2>成績</h2>
+      <h2 id="statsTitle">成績</h2>
       <button class="btn small" type="button" id="reset">リセット</button>
     </div>
     <div class="nums">
@@ -268,16 +314,425 @@ function classify(q, user, rule) {
   return 'other';
 }
 
+/* ===== 牌姿から点数を求める（役・符の判定） ===== */
+// 牌の番号：0〜8 萬子、9〜17 筒子、18〜26 索子、27東 28南 29西 30北 31白 32發 33中
+const EAST = 27, SOUTH = 28, WHITE = 31;
+const WIND_NAMES = ['東', '南', '西', '北'];
+const HONOR_NAMES = ['東', '南', '西', '北', '白', '發', '中'];
+const isHonor = (t) => t >= 27;
+const isDragon = (t) => t >= 31;
+const numOf = (t) => (t % 9) + 1;
+const suitOf = (t) => Math.floor(t / 9);  // 3 は字牌
+const isTerminal = (t) => !isHonor(t) && (numOf(t) === 1 || numOf(t) === 9);
+const isYaochu = (t) => isHonor(t) || isTerminal(t);
+const SUIT_NAMES = ['萬', '筒', '索'];
+const KANJI_NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
+function tileName(t) {
+  return isHonor(t) ? HONOR_NAMES[t - 27] : KANJI_NUM[numOf(t) - 1] + SUIT_NAMES[suitOf(t)];
+}
+
+// ドラ表示牌から実際のドラを求める
+function doraFrom(ind) {
+  if (ind < 27) return suitOf(ind) * 9 + (numOf(ind) % 9);
+  if (ind <= 30) return 27 + ((ind - 27 + 1) % 4);
+  return 31 + ((ind - 31 + 1) % 3);
+}
+
+// 手牌（枚数の配列）を「雀頭1つ＋面子」に分ける方法をすべて挙げる
+function decompose(counts, setsNeeded) {
+  const results = [];
+  const c = counts.slice();
+  function extract(sets) {
+    let t = c.findIndex((n) => n > 0);
+    if (t === -1) { if (sets.length === setsNeeded) results.push(sets.slice()); return; }
+    if (c[t] >= 3) {
+      c[t] -= 3; sets.push({ kind: 'trip', t }); extract(sets); sets.pop(); c[t] += 3;
+    }
+    if (!isHonor(t) && numOf(t) <= 7 && c[t + 1] > 0 && c[t + 2] > 0) {
+      c[t]--; c[t + 1]--; c[t + 2]--;
+      sets.push({ kind: 'seq', t }); extract(sets); sets.pop();
+      c[t]++; c[t + 1]++; c[t + 2]++;
+    }
+  }
+  for (let p = 0; p < 34; p++) {
+    if (c[p] < 2) continue;
+    c[p] -= 2;
+    const before = results.length;
+    extract([]);
+    for (let i = before; i < results.length; i++) results[i] = { pair: p, sets: results[i] };
+    c[p] += 2;
+  }
+  return results;
+}
+
+const countsOf = (tiles) => { const c = new Array(34).fill(0); tiles.forEach((t) => c[t]++); return c; };
+const setTiles = (s) => s.kind === 'seq' ? [s.t, s.t + 1, s.t + 2] : new Array(s.kind === 'kan' ? 4 : 3).fill(s.t);
+
+// 鳴き・暗槓を面子の形に直す
+function meldToSet(m) {
+  if (m.type === 'chi') return { kind: 'seq', t: m.t, open: true, called: true };
+  if (m.type === 'pon') return { kind: 'trip', t: m.t, open: true, called: true };
+  if (m.type === 'minkan') return { kind: 'kan', t: m.t, open: true, called: true };
+  return { kind: 'kan', t: m.t, open: false, called: true };  // 暗槓
+}
+
+function allTilesOf(hand) {
+  return hand.closed.concat(...hand.melds.map((m) => setTiles(meldToSet(m))));
+}
+
+function countDora(hand) {
+  const tiles = allTilesOf(hand);
+  let n = 0;
+  for (const ind of hand.doraInd) { const d = doraFrom(ind); n += tiles.filter((t) => t === d).length; }
+  return n;
+}
+
+// 1つの解釈（面子の分け方と待ちの形）について、役と符を数える
+function scoreStandard(hand, pair, sets, waitKind) {
+  const menzen = hand.melds.every((m) => m.type === 'ankan');
+  const yaku = [];
+  const add = (name, han) => yaku.push({ name, han });
+  const kui = (closedHan) => (menzen ? closedHan : closedHan - 1);
+
+  const isValuePair = (t) => isDragon(t) || t === hand.seat || t === hand.round;
+  const seqs = sets.filter((s) => s.kind === 'seq');
+  const trips = sets.filter((s) => s.kind !== 'seq');  // 刻子と槓子
+  const tiles = [pair, pair].concat(...sets.map(setTiles));
+
+  if (hand.riichi) add('リーチ', 1);
+  if (menzen && hand.tsumo) add('門前清自摸和', 1);
+  if (tiles.every((t) => !isYaochu(t))) add('断么九', 1);
+  const pinfu = menzen && seqs.length === 4 && !isValuePair(pair) && waitKind === 'ryanmen';
+  if (pinfu) add('平和', 1);
+
+  if (menzen) {
+    const keys = {};
+    seqs.forEach((s) => { keys[s.t] = (keys[s.t] || 0) + 1; });
+    const peko = Object.values(keys).reduce((a, n) => a + Math.floor(n / 2), 0);
+    if (peko === 2) add('二盃口', 3);
+    else if (peko === 1) add('一盃口', 1);
+  }
+
+  for (const s of trips) {
+    if (isDragon(s.t)) add('役牌 ' + HONOR_NAMES[s.t - 27], 1);
+    if (s.t === hand.seat) add('自風 ' + HONOR_NAMES[s.t - 27], 1);
+    if (s.t === hand.round) add('場風 ' + HONOR_NAMES[s.t - 27], 1);
+  }
+
+  for (let n = 0; n < 7; n++) {
+    if ([0, 1, 2].every((su) => seqs.some((s) => s.t === su * 9 + n))) { add('三色同順', kui(2)); break; }
+  }
+  for (let su = 0; su < 3; su++) {
+    if ([0, 3, 6].every((n) => seqs.some((s) => s.t === su * 9 + n))) { add('一気通貫', kui(2)); break; }
+  }
+  if (trips.length === 4) add('対々和', 2);
+  const concealedTrips = trips.filter((s) => !s.open).length;
+  if (concealedTrips === 3) add('三暗刻', 2);
+  if (trips.filter((s) => s.kind === 'kan').length === 3) add('三槓子', 2);
+  for (let n = 0; n < 9; n++) {
+    if ([0, 1, 2].every((su) => trips.some((s) => s.t === su * 9 + n))) { add('三色同刻', 2); break; }
+  }
+  if (trips.filter((s) => isDragon(s.t)).length === 2 && isDragon(pair)) add('小三元', 2);
+
+  const allYaochu = tiles.every(isYaochu);
+  if (allYaochu) add('混老頭', 2);
+  const setHasYaochu = (s) => s.kind === 'seq' ? (numOf(s.t) === 1 || numOf(s.t) === 7) : isYaochu(s.t);
+  if (!allYaochu && seqs.length > 0 && isYaochu(pair) && sets.every(setHasYaochu)) {
+    if (tiles.some(isHonor)) add('混全帯么九', kui(2));
+    else add('純全帯么九', kui(3));
+  }
+
+  const suits = new Set(tiles.filter((t) => !isHonor(t)).map(suitOf));
+  if (suits.size === 1) {
+    if (tiles.some(isHonor)) add('混一色', kui(3));
+    else add('清一色', kui(6));
+  }
+
+  // 符
+  const fuItems = [];
+  let fu;
+  if (pinfu && hand.tsumo) {
+    fu = 20; fuItems.push(['平和ツモ', 20]);
+  } else {
+    fuItems.push(['副底', 20]);
+    if (menzen && !hand.tsumo) fuItems.push(['門前ロン', 10]);
+    if (hand.tsumo) fuItems.push(['ツモ', 2]);
+    for (const s of trips) {
+      let f = 2;
+      if (isYaochu(s.t)) f *= 2;
+      if (!s.open) f *= 2;
+      if (s.kind === 'kan') f *= 4;
+      const label = (s.kind === 'kan' ? (s.open ? '明槓' : '暗槓') : (s.open ? '明刻' : '暗刻'));
+      fuItems.push([tileName(s.t) + 'の' + label, f]);
+    }
+    let pf = 0;
+    if (isDragon(pair)) pf += 2;
+    if (pair === hand.seat) pf += 2;
+    if (pair === hand.round) pf += 2;
+    if (pf) fuItems.push([tileName(pair) + 'の雀頭', pf]);
+    const waitNames = { kanchan: 'カンチャン待ち', penchan: 'ペンチャン待ち', tanki: '単騎待ち' };
+    if (waitNames[waitKind]) fuItems.push([waitNames[waitKind], 2]);
+    const raw = fuItems.reduce((a, [, f]) => a + f, 0);
+    fu = Math.ceil(raw / 10) * 10;
+    if (!menzen && fu === 20) { fu = 30; fuItems.push(['鳴いた平和形のロンは30符', 10]); }
+  }
+  return { yaku, fu, fuItems, suuankou: concealedTrips === 4 };
+}
+
+function scoreChiitoi(hand) {
+  const yaku = [];
+  const add = (name, han) => yaku.push({ name, han });
+  const tiles = hand.closed;
+  if (hand.riichi) add('リーチ', 1);
+  if (hand.tsumo) add('門前清自摸和', 1);
+  add('七対子', 2);
+  if (tiles.every((t) => !isYaochu(t))) add('断么九', 1);
+  if (tiles.every(isYaochu)) add('混老頭', 2);
+  const suits = new Set(tiles.filter((t) => !isHonor(t)).map(suitOf));
+  if (suits.size === 1) {
+    if (tiles.some(isHonor)) add('混一色', 3);
+    else add('清一色', 6);
+  }
+  return { yaku, fu: 25, fuItems: [['七対子', 25]] };
+}
+
+// 手牌を評価し、一番点数が高くなる解釈を返す（役がなければ null）
+function evaluateHand(hand, rule) {
+  const counts = countsOf(hand.closed);
+  const candidates = [];
+
+  if (hand.melds.length === 0 && counts.filter((n) => n === 2).length === 7) {
+    candidates.push(scoreChiitoi(hand));
+  }
+
+  const meldSets = hand.melds.map(meldToSet);
+  for (const d of decompose(counts, 4 - hand.melds.length)) {
+    const groups = [{ kind: 'pair', t: d.pair }].concat(d.sets);
+    groups.forEach((g, i) => {
+      let waitKind;
+      if (g.kind === 'pair') { if (g.t !== hand.win) return; waitKind = 'tanki'; }
+      else if (g.kind === 'trip') { if (g.t !== hand.win) return; waitKind = 'shanpon'; }
+      else {
+        const pos = hand.win - g.t;
+        if (pos < 0 || pos > 2) return;
+        if (pos === 1) waitKind = 'kanchan';
+        else if ((pos === 2 && numOf(g.t) === 1) || (pos === 0 && numOf(g.t) === 7)) waitKind = 'penchan';
+        else waitKind = 'ryanmen';
+      }
+      // ロンで完成した刻子は明刻として扱う
+      const closedSets = d.sets.map((s, j) => ({ ...s, open: waitKind === 'shanpon' && !hand.tsumo && j === i - 1 }));
+      candidates.push(scoreStandard(hand, d.pair, closedSets.concat(meldSets), waitKind));
+    });
+  }
+
+  if (candidates.some((c) => c.suuankou)) return null;  // 四暗刻（役満）は出題しない
+  const dora = countDora(hand);
+  let best = null;
+  for (const c of candidates) {
+    const yakuHan = c.yaku.reduce((a, y) => a + y.han, 0);
+    if (yakuHan === 0) continue;
+    const yaku = dora ? c.yaku.concat([{ name: 'ドラ' + dora, han: dora }]) : c.yaku;
+    const han = yakuHan + dora;
+    const base = baseInfo(han, c.fu, rule).base;
+    const r = { yaku, han, fu: c.fu, fuItems: c.fuItems, base };
+    if (!best || base > best.base || (base === best.base && (han > best.han || (han === best.han && c.fu > best.fu)))) best = r;
+  }
+  return best;
+}
+
+/* ----- 出題する手を作る ----- */
+const rint = (n) => Math.floor(Math.random() * n);
+const pick = (arr) => arr[rint(arr.length)];
+const SIMPLE_SEQ_STARTS = [];   // 2〜6 から始まる順子（断么九用）
+const ALL_SEQ_STARTS = [];
+for (let su = 0; su < 3; su++) for (let n = 0; n < 7; n++) {
+  ALL_SEQ_STARTS.push(su * 9 + n);
+  if (n >= 1 && n <= 5) SIMPLE_SEQ_STARTS.push(su * 9 + n);
+}
+const ALL_TILES = Array.from({ length: 34 }, (_, i) => i);
+const SIMPLES = ALL_TILES.filter((t) => !isYaochu(t));
+const YAOCHU = ALL_TILES.filter(isYaochu);
+
+const THEMES = [
+  ['free', 14], ['tanyao', 14], ['pinfu', 12], ['yakuhai', 14], ['honitsu', 8], ['chinitsu', 4],
+  ['toitoi', 6], ['sanshoku', 5], ['ittsu', 5], ['chanta', 5], ['iipeikou', 6], ['chiitoi', 7]
+];
+
+function buildSets(theme, seat, round) {
+  const seq = (starts) => ({ kind: 'seq', t: pick(starts) });
+  const trip = (tiles) => ({ kind: 'trip', t: pick(tiles) });
+  const any = (seqStarts, tripTiles, seqRate = 0.7) => (Math.random() < seqRate ? seq(seqStarts) : trip(tripTiles));
+  const sets = [];
+  let pair;
+  switch (theme) {
+    case 'tanyao':
+      for (let i = 0; i < 4; i++) sets.push(any(SIMPLE_SEQ_STARTS, SIMPLES));
+      pair = pick(SIMPLES); break;
+    case 'pinfu':
+      for (let i = 0; i < 4; i++) sets.push(seq(ALL_SEQ_STARTS));
+      pair = pick(ALL_TILES.filter((t) => !isDragon(t) && t !== seat && t !== round)); break;
+    case 'yakuhai': {
+      const values = [31, 32, 33, seat, round];
+      sets.push(trip(values));
+      for (let i = 0; i < 3; i++) sets.push(any(ALL_SEQ_STARTS, ALL_TILES));
+      pair = pick(ALL_TILES); break;
+    }
+    case 'honitsu': case 'chinitsu': {
+      const su = rint(3);
+      const starts = ALL_SEQ_STARTS.filter((t) => suitOf(t) === su);
+      const own = ALL_TILES.filter((t) => suitOf(t) === su);
+      const pool = theme === 'honitsu' ? own.concat([27, 28, 29, 30, 31, 32, 33]) : own;
+      for (let i = 0; i < 4; i++) sets.push(any(starts, pool, theme === 'honitsu' ? 0.6 : 0.75));
+      pair = pick(pool);
+      if (theme === 'honitsu' && ![pair].concat(sets.filter((s) => s.kind === 'trip').map((s) => s.t)).some(isHonor)) {
+        sets[0] = trip([27, 28, 29, 30, 31, 32, 33]);
+      }
+      break;
+    }
+    case 'toitoi':
+      for (let i = 0; i < 4; i++) sets.push(trip(ALL_TILES));
+      pair = pick(ALL_TILES); break;
+    case 'sanshoku': {
+      const n = rint(7);
+      for (let su = 0; su < 3; su++) sets.push({ kind: 'seq', t: su * 9 + n });
+      sets.push(any(ALL_SEQ_STARTS, ALL_TILES)); pair = pick(ALL_TILES); break;
+    }
+    case 'ittsu': {
+      const su = rint(3);
+      for (const n of [0, 3, 6]) sets.push({ kind: 'seq', t: su * 9 + n });
+      sets.push(any(ALL_SEQ_STARTS, ALL_TILES)); pair = pick(ALL_TILES); break;
+    }
+    case 'chanta': {
+      const starts = ALL_SEQ_STARTS.filter((t) => numOf(t) === 1 || numOf(t) === 7);
+      sets.push(seq(starts));
+      for (let i = 0; i < 3; i++) sets.push(any(starts, YAOCHU, 0.6));
+      pair = pick(YAOCHU); break;
+    }
+    case 'iipeikou': {
+      const s = seq(ALL_SEQ_STARTS);
+      sets.push(s, { ...s });
+      for (let i = 0; i < 2; i++) sets.push(any(ALL_SEQ_STARTS, ALL_TILES, 0.8));
+      pair = pick(ALL_TILES); break;
+    }
+    default:
+      for (let i = 0; i < 4; i++) sets.push(any(ALL_SEQ_STARTS, ALL_TILES));
+      pair = pick(ALL_TILES);
+  }
+  return { sets, pair };
+}
+
+// 役満になってしまう手や、ルールで扱いが分かれる手を除く
+function isExcluded(hand, sets, pair) {
+  const tiles = allTilesOf(hand);
+  const c = countsOf(tiles.concat(hand.doraInd));
+  if (c.some((n) => n > 4)) return true;
+  const trips = sets.filter((s) => s.kind !== 'seq');
+  if (trips.filter((s) => isDragon(s.t)).length === 3) return true;                   // 大三元
+  if (trips.filter((s) => s.t >= 27 && s.t <= 30).length >= 3) return true;           // 四喜和
+  if (tiles.every(isHonor)) return true;                                              // 字一色
+  if (tiles.every(isTerminal)) return true;                                           // 清老頭
+  if (tiles.every((t) => [19, 20, 21, 23, 25, 32].includes(t))) return true;          // 緑一色
+  if (trips.length === 4 && trips.filter((s) => !s.called).length + hand.melds.filter((m) => m.type === 'ankan').length >= 4) return true;  // 四暗刻の可能性
+  if (hand.melds.filter((m) => m.type !== 'chi' && m.type !== 'pon').length >= 4) return true;  // 四槓子
+  if (hand.melds.length === 0 && new Set(tiles.map(suitOf)).size === 1 && !tiles.some(isHonor)) {
+    const cc = countsOf(tiles).slice(suitOf(tiles[0]) * 9, suitOf(tiles[0]) * 9 + 9);
+    if (cc[0] >= 3 && cc[8] >= 3 && cc.every((n) => n >= 1)) return true;              // 九蓮宝燈
+  }
+  if (pair === hand.seat && pair === hand.round) return true;                         // 連風牌の雀頭（2符か4符かルールで分かれる）
+  return false;
+}
+
+function generateHand(rule) {
+  for (let tries = 0; tries < 5000; tries++) {
+    const seat = EAST + rint(4);
+    const round = Math.random() < 0.7 ? EAST : SOUTH;
+    const theme = pickWeighted(THEMES);
+    const tsumo = Math.random() < 0.45;
+    let hand;
+
+    if (theme === 'chiitoi') {
+      const pool = pick([ALL_TILES, SIMPLES, ALL_TILES.filter((t) => suitOf(t) === 0 || isHonor(t))]);
+      const pairs = new Set();
+      while (pairs.size < 7) pairs.add(pick(pool));
+      const closed = [...pairs].flatMap((t) => [t, t]);
+      hand = { closed, melds: [], win: pick([...pairs]), tsumo, riichi: Math.random() < 0.55, seat, round, doraInd: [] };
+      hand.doraInd = [rint(34)];
+      if (isExcluded(hand, [], -1)) continue;
+    } else {
+      const { sets, pair } = buildSets(theme, seat, round);
+      const canOpen = !['pinfu', 'iipeikou'].includes(theme);
+      const openRate = { yakuhai: 0.6, toitoi: 0.6, honitsu: 0.5 }[theme] ?? 0.35;
+      let openCount = canOpen && Math.random() < openRate ? 1 + rint(3) : 0;
+      const order = sets.map((_, i) => i).sort(() => Math.random() - 0.5);
+      const melds = [];
+      const closedSets = [];
+      order.forEach((i) => {
+        const s = sets[i];
+        if (openCount > 0) {
+          openCount--;
+          if (s.kind === 'seq') melds.push({ type: 'chi', t: s.t });
+          else melds.push({ type: Math.random() < 0.15 ? 'minkan' : 'pon', t: s.t });
+        } else if (s.kind === 'trip' && Math.random() < 0.08) {
+          melds.push({ type: 'ankan', t: s.t });
+        } else {
+          closedSets.push(s);
+        }
+      });
+      if (closedSets.length === 0 && Math.random() < 0.7) continue;  // 裸単騎はたまにだけ
+      const closed = [pair, pair].concat(...closedSets.map(setTiles));
+      const kans = melds.filter((m) => m.type === 'minkan' || m.type === 'ankan').length;
+      hand = { closed, melds, win: pick(closed), tsumo, riichi: false, seat, round, doraInd: [] };
+      hand.riichi = melds.every((m) => m.type === 'ankan') && Math.random() < 0.55;
+      for (let k = 0; k <= kans; k++) hand.doraInd.push(rint(34));
+      // 鳴いた刻子・槓子は「called」として記録しておく（四暗刻の判定に使う）
+      const called = sets.map((s) => ({ ...s }));
+      melds.forEach((m) => { const s = called.find((x) => !x.called && x.t === m.t && (m.type === 'chi') === (x.kind === 'seq')); if (s) s.called = true; });
+      if (isExcluded(hand, called, pair)) continue;
+    }
+
+    let res = evaluateHand(hand, rule);
+    if (!res && hand.melds.every((m) => m.type === 'ankan') && !hand.riichi) {
+      hand.riichi = true;
+      res = evaluateHand(hand, rule);
+    }
+    if (!res) continue;
+    return { kind: 'hand', hand, dealer: hand.seat === EAST, tsumo: hand.tsumo };
+  }
+  return null;
+}
+
+const HAND_CATEGORIES = {
+  yaku:  { label: '役・翻の数え違い' },
+  fu:    { label: '符の数え違い' },
+  calc:  { label: '点数の計算' },
+  other: { label: 'その他' },
+};
+
+// 牌姿モードの間違いの型：翻だけ違う／符だけ違う／翻符は合っていて点数の出し方が違う
+function classifyHand(q, user, rule) {
+  const res = evaluateHand(q.hand, rule);
+  const pts = (h, f) => payments(baseInfo(h, f, rule).base, q.dealer, q.tsumo);
+  if (sameArr(pts(res.han, res.fu), user)) return null;
+  for (let h = 1; h <= 13; h++) if (h !== res.han && sameArr(pts(h, res.fu), user)) return 'yaku';
+  for (const [f] of FU_WEIGHTS) if (f !== res.fu && sameArr(pts(res.han, f), user)) return 'fu';
+  const c = classify({ han: res.han, fu: res.fu, dealer: q.dealer, tsumo: q.tsumo }, user, rule);
+  if (c && c !== 'other' && c !== 'han') return 'calc';
+  return 'other';
+}
+
+
 /* ===== 画面の処理 ===== */
 if (typeof document !== 'undefined') {
   const STORE_KEY = 'mahjong-drill.v1';
-  const fresh = () => ({ total: 0, correct: 0, streak: 0, best: 0, recent: [], mode: 'random', kiriage: false });
+  const freshStats = () => ({ total: 0, correct: 0, streak: 0, best: 0, recent: [] });
+  const fresh = () => Object.assign(freshStats(), { mode: 'random', kiriage: false, tab: 'hanfu', hand: freshStats() });
   let state = fresh();
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
     if (saved) state = Object.assign(fresh(), saved);
     delete state.cats;  // 旧版の累計記録は使わない
     if (!Array.isArray(state.recent)) state.recent = [];
+    state.hand = Object.assign(freshStats(), state.hand);
   } catch (e) { /* 保存できない環境でも動くようにする */ }
   const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} };
 
@@ -285,31 +740,38 @@ if (typeof document !== 'undefined') {
   let current = null;
   let answered = false;
   // モードごとに、まだ答えていない問題を覚えておく（モードを戻したときに同じ問題を出すため）
-  const pending = { random: null, weak: null };
+  const pending = { random: null, weak: null, hand: null };
 
   const rule = () => ({ kiriage: state.kiriage });
+  const isHandTab = () => state.tab === 'hand';
+  const stats = () => (isHandTab() ? state.hand : state);  // 翻・符モードの成績は従来どおり state 直下
+  const categories = () => (isHandTab() ? HAND_CATEGORIES : CATEGORIES);
+  const pendingKey = () => (isHandTab() ? 'hand' : state.mode);
 
   // 直近の答え合わせ結果（null は正解、文字列は間違いの分類）。苦手の判定はこの範囲だけで行う
   const RECENT_LIMIT = 50;
 
-  function catCounts() {
+  function catCounts(s = stats()) {
     const counts = {};
-    for (const c of state.recent) if (c) counts[c] = (counts[c] || 0) + 1;
+    for (const c of s.recent) if (c) counts[c] = (counts[c] || 0) + 1;
     return counts;
   }
 
   function weakest() {
-    const entries = Object.entries(catCounts()).filter(([k, v]) => k !== 'other' && v > 0);
+    const entries = Object.entries(catCounts(state)).filter(([k, v]) => k !== 'other' && v > 0);
     if (!entries.length) return null;
     entries.sort((a, b) => b[1] - a[1]);
     return entries[0][0];
   }
 
   function renderControls() {
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === state.tab));
     document.querySelectorAll('#modeSeg button').forEach(b => b.classList.toggle('on', b.dataset.mode === state.mode));
+    $('modeSeg').hidden = isHandTab();
+    $('handRules').hidden = !isHandTab();
     $('kiriage').checked = state.kiriage;
     let note = '';
-    if (state.mode === 'weak') {
+    if (!isHandTab() && state.mode === 'weak') {
       const w = weakest();
       note = w ? `いま優先している苦手：${CATEGORIES[w].label}` : 'まだ苦手の記録がないので、ランダムに出題します。';
     }
@@ -323,19 +785,64 @@ if (typeof document !== 'undefined') {
   }
 
   function newQuestion() {
+    if (isHandTab()) { showQuestion(generateHand(rule())); return; }
     const focus = state.mode === 'weak' ? weakest() : null;
-    showQuestion(generateQuestion(focus, rule(), current));
+    showQuestion(generateQuestion(focus, rule(), current && current.kind === 'hand' ? null : current));
+  }
+
+  /* ----- 牌の表示 ----- */
+  function tileHtml(t, extra = '') {
+    if (t === 'back') return `<span class="tile back ${extra}"></span>`;
+    if (isHonor(t)) {
+      const cls = t === WHITE ? 'haku' : t === 32 ? 'hatsu' : t === 33 ? 'chun' : 'kaze';
+      return `<span class="tile honor ${cls} ${extra}">${t === WHITE ? '' : HONOR_NAMES[t - 27]}</span>`;
+    }
+    return `<span class="tile suit${suitOf(t)} ${extra}"><b>${KANJI_NUM[numOf(t) - 1]}</b><i>${SUIT_NAMES[suitOf(t)]}</i></span>`;
+  }
+
+  const MELD_LABELS = { chi: 'チー', pon: 'ポン', minkan: '明槓', ankan: '暗槓' };
+  function meldHtml(m) {
+    let tiles;
+    if (m.type === 'chi') tiles = [m.t, m.t + 1, m.t + 2];
+    else if (m.type === 'pon') tiles = [m.t, m.t, m.t];
+    else if (m.type === 'minkan') tiles = [m.t, m.t, m.t, m.t];
+    else tiles = ['back', m.t, m.t, 'back'];
+    return `<div class="meld"><div class="tiles">${tiles.map(t => tileHtml(t)).join('')}</div><small>${MELD_LABELS[m.type]}</small></div>`;
+  }
+
+  function handHtml(q) {
+    const h = q.hand;
+    const rest = h.closed.slice();
+    rest.splice(rest.indexOf(h.win), 1);
+    rest.sort((a, b) => a - b);
+    const seatName = WIND_NAMES[h.seat - EAST];
+    const situ = [
+      `<span class="chip sm">${WIND_NAMES[h.round - EAST]}場</span>`,
+      `<span class="chip sm ${q.dealer ? 'oya' : ''}">自風 ${seatName}（${q.dealer ? '親' : '子'}）</span>`,
+      h.riichi ? '<span class="chip sm riichi">リーチ</span>' : '',
+      `<span class="chip sm dora">ドラ表示牌 ${h.doraInd.map(t => tileHtml(t, 'mini')).join('')}</span>`
+    ].join('');
+    return `<div class="situ">${situ}</div>
+      <div class="hand-row">
+        <div class="tiles">${rest.map(t => tileHtml(t)).join('')}</div>
+        <div class="win"><div class="tiles">${tileHtml(h.win, 'agari')}</div><small>${h.tsumo ? 'ツモ' : 'ロン'}</small></div>
+      </div>
+      ${h.melds.length ? `<div class="melds">${h.melds.map(meldHtml).join('')}</div>` : ''}`;
   }
 
   function showQuestion(q) {
     current = q;
     answered = false;
     const who = current.dealer ? '親' : '子';
-    $('chips').innerHTML =
-      `<span class="chip">${current.han}<small>翻</small></span>` +
-      `<span class="chip">${current.fu}<small>符</small></span>` +
-      `<span class="chip ${current.dealer ? 'oya' : ''}">${who}</span>` +
-      `<span class="chip">${current.tsumo ? 'ツモ' : 'ロン'}</span>`;
+    if (q.kind === 'hand') {
+      $('chips').innerHTML = handHtml(q);
+    } else {
+      $('chips').innerHTML =
+        `<div class="q-chips"><span class="chip">${current.han}<small>翻</small></span>` +
+        `<span class="chip">${current.fu}<small>符</small></span>` +
+        `<span class="chip ${current.dealer ? 'oya' : ''}">${who}</span>` +
+        `<span class="chip">${current.tsumo ? 'ツモ' : 'ロン'}</span></div>`;
+    }
     $('prompt').textContent = !current.tsumo
       ? `${who}がロン和了。何点？`
       : current.dealer
@@ -351,6 +858,14 @@ if (typeof document !== 'undefined') {
     if (first && window.matchMedia('(hover: hover)').matches) first.focus();
   }
 
+  function handBreakdown(res) {
+    const yaku = res.yaku.map(y => `<li><span>${y.name}</span><span>${y.han}翻</span></li>`).join('');
+    const fu = res.han < 5
+      ? `<p class="fu-line">${res.fuItems.map(([name, f]) => `${name} ${f}`).join('、')} → <b>${res.fu}符</b></p>`
+      : '';
+    return `<div class="breakdown"><ul>${yaku}</ul><p class="total-line">${res.han}翻 ${res.han < 5 ? res.fu + '符' : ''}</p>${fu}</div>`;
+  }
+
   function check() {
     const inputs = [...document.querySelectorAll('#fields input')];
     const user = inputs.map(el => parseInt(el.value.replace(/[^0-9]/g, ''), 10));
@@ -362,27 +877,30 @@ if (typeof document !== 'undefined') {
     answered = true;
     inputs.forEach(el => (el.disabled = true));
 
-    const cat = classify(current, user, rule());
-    const correct = answerOf(current, rule());
-    state.total++;
+    const isHand = current.kind === 'hand';
+    const res = isHand ? evaluateHand(current.hand, rule()) : null;
+    const cat = isHand ? classifyHand(current, user, rule()) : classify(current, user, rule());
+    const correct = isHand ? payments(res.base, current.dealer, current.tsumo) : answerOf(current, rule());
+    const s = stats();
+    s.total++;
     if (cat === null) {
-      state.correct++;
-      state.streak++;
-      state.best = Math.max(state.best, state.streak);
+      s.correct++;
+      s.streak++;
+      s.best = Math.max(s.best, s.streak);
     } else {
-      state.streak = 0;
+      s.streak = 0;
     }
-    state.recent.push(cat);
-    if (state.recent.length > RECENT_LIMIT) state.recent.shift();
+    s.recent.push(cat);
+    if (s.recent.length > RECENT_LIMIT) s.recent.shift();
     save();
 
     const n = x => x.toLocaleString('ja-JP');
     const labels = fieldsFor(current);
     const answerText = correct.map((v, i) => (correct.length > 1 ? `${labels[i]} ${n(v)}` : n(v))).join('、');
-    $('result').innerHTML = cat === null
+    $('result').innerHTML = (cat === null
       ? `<div class="verdict ok">正解！</div>`
-      : `<div class="verdict ng">不正解<span class="tag">${CATEGORIES[cat].label}</span></div>
-         <p>正解は <b>${answerText}</b></p>`;
+      : `<div class="verdict ng">不正解<span class="tag">${categories()[cat].label}</span></div>
+         <p>正解は <b>${answerText}</b></p>`) + (isHand ? handBreakdown(res) : '');
     $('result').hidden = false;
     $('mainBtn').textContent = '次の問題';
     $('mainBtn').focus();
@@ -390,44 +908,60 @@ if (typeof document !== 'undefined') {
   }
 
   function renderStats() {
-    $('rate').textContent = state.total ? `${Math.round(state.correct / state.total * 100)}%` : '-';
-    $('streak').textContent = state.streak;
-    $('best').textContent = state.best;
-    $('recentNote').textContent = `直近${state.recent.length}問（最大${RECENT_LIMIT}問）`;
-    const entries = Object.entries(catCounts()).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    const s = stats();
+    $('statsTitle').textContent = isHandTab() ? '成績（牌姿から）' : '成績（翻・符から）';
+    $('rate').textContent = s.total ? `${Math.round(s.correct / s.total * 100)}%` : '-';
+    $('streak').textContent = s.streak;
+    $('best').textContent = s.best;
+    $('recentNote').textContent = `直近${s.recent.length}問（最大${RECENT_LIMIT}問）`;
+    const cats = categories();
+    const entries = Object.entries(catCounts(s)).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
     if (!entries.length) {
       $('bars').innerHTML = '<p class="empty">まだ間違いの記録はありません。</p>';
       return;
     }
     const max = entries[0][1];
     $('bars').innerHTML = entries.map(([k, v]) =>
-      `<div class="bar-row"><span>${CATEGORIES[k].label}</span><div class="bar"><span style="width:${v / max * 100}%"></span></div><span>${v}</span></div>`
+      `<div class="bar-row"><span>${cats[k].label}</span><div class="bar"><span style="width:${v / max * 100}%"></span></div><span>${v}</span></div>`
     ).join('');
+  }
+
+  // 出題の種類（タブ・モード）を切り替える。答えていない問題は取っておき、戻したときに同じ問題を出す
+  function switchTo(change) {
+    const before = pendingKey();
+    if (!answered) pending[before] = current;
+    change();
+    save();
+    const key = pendingKey();
+    const saved = pending[key];
+    pending[key] = null;
+    saved ? showQuestion(saved) : newQuestion();
+    renderStats();
   }
 
   $('form').addEventListener('submit', e => {
     e.preventDefault();
     answered ? newQuestion() : check();
   });
+  document.querySelectorAll('#tabs button').forEach(b => b.addEventListener('click', () => {
+    if (b.dataset.tab === state.tab) return;  // 選択中のタブを押しても問題は変えない
+    switchTo(() => { state.tab = b.dataset.tab; });
+  }));
   document.querySelectorAll('#modeSeg button').forEach(b => b.addEventListener('click', () => {
-    const next = b.dataset.mode;
-    if (next === state.mode) return;  // 選択中のモードを押しても問題は変えない
-    if (!answered) pending[state.mode] = current;  // 答えていない問題は取っておく
-    state.mode = next; save();
-    const saved = pending[next];
-    pending[next] = null;
-    saved ? showQuestion(saved) : newQuestion();
+    if (b.dataset.mode === state.mode) return;  // 選択中のモードを押しても問題は変えない
+    switchTo(() => { state.mode = b.dataset.mode; });
   }));
   $('kiriage').addEventListener('change', e => {
     // 出題中の問題はそのままにして、ルールだけ切り替える（答え合わせは新しいルールで行う）
     state.kiriage = e.target.checked; save(); renderControls();
   });
   $('reset').addEventListener('click', () => {
-    if (!confirm('成績と苦手の記録をリセットしますか？')) return;
-    const keep = { mode: state.mode, kiriage: state.kiriage };
-    state = Object.assign(fresh(), keep); save();
-    pending.random = pending.weak = null;
-    renderStats(); newQuestion();
+    const name = isHandTab() ? '牌姿から' : '翻・符から';
+    if (!confirm(`「${name}」の成績と苦手の記録をリセットしますか？`)) return;
+    if (isHandTab()) state.hand = freshStats();
+    else Object.assign(state, freshStats());
+    save();
+    renderStats();
   });
 
   renderStats();
