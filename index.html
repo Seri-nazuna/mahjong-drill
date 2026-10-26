@@ -434,7 +434,8 @@ if (typeof document !== 'undefined') {
     state.mode = b.dataset.mode; save(); newQuestion();
   }));
   $('kiriage').addEventListener('change', e => {
-    state.kiriage = e.target.checked; save(); newQuestion();
+    // 出題中の問題はそのままにして、ルールだけ切り替える（答え合わせは新しいルールで行う）
+    state.kiriage = e.target.checked; save(); renderControls();
   });
   $('reset').addEventListener('click', () => {
     if (!confirm('成績と苦手の記録をリセットしますか？')) return;
