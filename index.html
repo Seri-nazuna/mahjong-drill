@@ -119,7 +119,7 @@
       <div>連続正解<b id="streak">0</b></div>
       <div>最高記録<b id="best">0</b></div>
     </div>
-    <h3>つまずきの内訳</h3>
+    <h3>つまずきの内訳<small style="font-weight:400;color:var(--muted);margin-left:6px" id="recentNote"></small></h3>
     <div id="bars"></div>
   </section>
 
@@ -308,11 +308,13 @@ function explain(q, rule) {
 /* ===== 画面の処理 ===== */
 if (typeof document !== 'undefined') {
   const STORE_KEY = 'mahjong-drill.v1';
-  const fresh = () => ({ total: 0, correct: 0, streak: 0, best: 0, cats: {}, mode: 'random', kiriage: false });
+  const fresh = () => ({ total: 0, correct: 0, streak: 0, best: 0, recent: [], mode: 'random', kiriage: false });
   let state = fresh();
   try {
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
     if (saved) state = Object.assign(fresh(), saved);
+    delete state.cats;  // 旧版の累計記録は使わない
+    if (!Array.isArray(state.recent)) state.recent = [];
   } catch (e) { /* 保存できない環境でも動くようにする */ }
   const save = () => { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) {} };
 
@@ -324,8 +326,17 @@ if (typeof document !== 'undefined') {
 
   const rule = () => ({ kiriage: state.kiriage });
 
+  // 直近の答え合わせ結果（null は正解、文字列は間違いの分類）。苦手の判定はこの範囲だけで行う
+  const RECENT_LIMIT = 50;
+
+  function catCounts() {
+    const counts = {};
+    for (const c of state.recent) if (c) counts[c] = (counts[c] || 0) + 1;
+    return counts;
+  }
+
   function weakest() {
-    const entries = Object.entries(state.cats).filter(([k, v]) => k !== 'other' && v > 0);
+    const entries = Object.entries(catCounts()).filter(([k, v]) => k !== 'other' && v > 0);
     if (!entries.length) return null;
     entries.sort((a, b) => b[1] - a[1]);
     return entries[0][0];
@@ -397,8 +408,9 @@ if (typeof document !== 'undefined') {
       state.best = Math.max(state.best, state.streak);
     } else {
       state.streak = 0;
-      state.cats[cat] = (state.cats[cat] || 0) + 1;
     }
+    state.recent.push(cat);
+    if (state.recent.length > RECENT_LIMIT) state.recent.shift();
     save();
 
     const n = x => x.toLocaleString('ja-JP');
@@ -421,7 +433,8 @@ if (typeof document !== 'undefined') {
     $('rate').textContent = state.total ? `${Math.round(state.correct / state.total * 100)}%` : '-';
     $('streak').textContent = state.streak;
     $('best').textContent = state.best;
-    const entries = Object.entries(state.cats).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+    $('recentNote').textContent = `直近${state.recent.length}問（最大${RECENT_LIMIT}問）`;
+    const entries = Object.entries(catCounts()).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
     if (!entries.length) {
       $('bars').innerHTML = '<p class="empty">まだ間違いの記録はありません。</p>';
       return;
