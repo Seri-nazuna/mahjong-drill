@@ -65,9 +65,6 @@
   .verdict.ok { color: var(--ok); }
   .verdict.ng { color: var(--ng); }
   .tag { display: inline-block; background: var(--ng); color: #fff; font-size: .78rem; border-radius: 6px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; font-weight: 700; }
-  .steps { background: var(--card-sub); border-radius: 8px; padding: 10px 12px; font-size: .9rem; margin: 10px 0 0; }
-  .steps ol { margin: 0; padding-left: 1.2em; }
-  .tip { font-size: .85rem; color: var(--muted); margin: 8px 0 0; }
 
   .stats-head { display: flex; justify-content: space-between; align-items: center; }
   .nums { display: flex; gap: 24px; margin-top: 8px; }
@@ -136,12 +133,12 @@ const HAN_WEIGHTS = [[1,15],[2,20],[3,20],[4,20],[5,7],[6,4],[7,2],[8,2],[9,1],[
 const FU_WEIGHTS  = [[20,6],[25,6],[30,20],[40,20],[50,12],[60,8],[70,6],[80,5],[90,4],[100,3],[110,3]];
 
 const CATEGORIES = {
-  kiriage: { label: '100点の切り上げ', tip: '支払いごとに100点単位へ切り上げます。7680点なら7700点です。' },
-  mangan:  { label: '満貫・上限の判定', tip: '基礎点が2000を超えたら満貫です。5翻以上は符に関係なく、満貫(5)・跳満(6)・倍満(8)・三倍満(11)・役満(13)で決まります。' },
-  oyako:   { label: '親と子の取り違え', tip: 'ロンは子なら基礎点×4、親なら基礎点×6です。' },
-  tsumo:   { label: 'ツモの支払い', tip: '子のツモは、子が基礎点×1、親が基礎点×2を払います。親のツモは、子3人が基礎点×2ずつ払います。' },
-  han:     { label: '翻による倍々', tip: '1翻増えるごとに基礎点は2倍です。符×2^(2+翻)で確かめましょう。' },
-  other:   { label: 'その他', tip: '下の手順を1行ずつ自分の計算と見比べてみましょう。' },
+  kiriage: { label: '100点の切り上げ' },
+  mangan:  { label: '満貫・上限の判定' },
+  oyako:   { label: '親と子の取り違え' },
+  tsumo:   { label: 'ツモの支払い' },
+  han:     { label: '翻による倍々' },
+  other:   { label: 'その他' },
 };
 
 function pickWeighted(list) {
@@ -271,40 +268,6 @@ function classify(q, user, rule) {
   return 'other';
 }
 
-// 計算手順の説明
-function explain(q, rule) {
-  const { han, fu, dealer, tsumo } = q;
-  const bi = baseInfo(han, fu, rule);
-  const n = x => x.toLocaleString('ja-JP');
-  const r = x => (x === ceil100(x) ? `${n(x)}（切り上げ不要）` : `${n(x)} → 100点単位に切り上げて ${n(ceil100(x))}`);
-  const lines = [];
-  if (bi.raw === null) {
-    lines.push(`${han}翻は符に関係なく${bi.name}。基礎点は ${n(bi.base)}。`);
-  } else {
-    lines.push(`基礎点 = 符 × 2^(2+翻) = ${fu} × 2^${2 + han} = ${n(bi.raw)}`);
-    if (bi.base !== bi.raw) {
-      lines.push(bi.raw > 2000
-        ? '2000を超えるので満貫。基礎点は 2,000 で頭打ち。'
-        : '切り上げ満貫ありのルールなので、満貫として基礎点 2,000 で扱う。');
-    }
-  }
-  const b = bi.base;
-  if (!tsumo) {
-    const m = dealer ? 6 : 4;
-    lines.push(`${dealer ? '親' : '子'}のロンは 基礎点 × ${m} = ${r(b * m)}`);
-  } else if (dealer) {
-    const a = ceil100(b * 2);
-    lines.push(`親のツモは、子3人がそれぞれ 基礎点 × 2 = ${r(b * 2)}`);
-    lines.push(`合計 ${n(a)} × 3 = ${n(a * 3)}（${n(a)}オール）`);
-  } else {
-    const c = ceil100(b), p = ceil100(b * 2);
-    lines.push(`子の支払い：基礎点 × 1 = ${r(b)}`);
-    lines.push(`親の支払い：基礎点 × 2 = ${r(b * 2)}`);
-    lines.push(`合計 ${n(c)} × 2 + ${n(p)} = ${n(c * 2 + p)}（${n(c)}・${n(p)}）`);
-  }
-  return lines;
-}
-
 /* ===== 画面の処理 ===== */
 if (typeof document !== 'undefined') {
   const STORE_KEY = 'mahjong-drill.v1';
@@ -416,13 +379,10 @@ if (typeof document !== 'undefined') {
     const n = x => x.toLocaleString('ja-JP');
     const labels = fieldsFor(current);
     const answerText = correct.map((v, i) => (correct.length > 1 ? `${labels[i]} ${n(v)}` : n(v))).join('、');
-    const steps = explain(current, rule()).map(l => `<li>${l}</li>`).join('');
     $('result').innerHTML = cat === null
-      ? `<div class="verdict ok">正解！</div><div class="steps"><ol>${steps}</ol></div>`
+      ? `<div class="verdict ok">正解！</div>`
       : `<div class="verdict ng">不正解<span class="tag">${CATEGORIES[cat].label}</span></div>
-         <p>正解は <b>${answerText}</b></p>
-         <div class="steps"><ol>${steps}</ol></div>
-         <p class="tip">${CATEGORIES[cat].tip}</p>`;
+         <p>正解は <b>${answerText}</b></p>`;
     $('result').hidden = false;
     $('mainBtn').textContent = '次の問題';
     $('mainBtn').focus();
