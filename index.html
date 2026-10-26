@@ -47,8 +47,10 @@
   .chip.oya { border-color: var(--accent); color: var(--accent); }
   .prompt { margin: 0 0 12px; }
 
-  .tabs { display: flex; background: rgba(0,0,0,.25); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
-  .tabs button { flex: 1; border: 0; background: transparent; color: #cfe0d8; font: inherit; font-weight: 700; padding: 9px 0; border-radius: 9px; cursor: pointer; }
+  .head-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .head-row h1 { font-size: clamp(1.15rem, 5.4vw, 1.5rem); white-space: nowrap; }
+  .tabs { display: flex; flex-shrink: 0; background: rgba(0,0,0,.25); border-radius: 999px; padding: 3px; }
+  .tabs button { border: 0; background: transparent; color: #cfe0d8; font: inherit; font-size: .78rem; font-weight: 700; padding: 5px 10px; border-radius: 999px; cursor: pointer; white-space: nowrap; }
   .tabs button.on { background: var(--card); color: var(--ink); }
   [hidden] { display: none !important; }
 
@@ -122,14 +124,15 @@
 <body>
 <main>
   <header>
-    <h1>麻雀 点数計算ドリル</h1>
+    <div class="head-row">
+      <h1>麻雀 点数計算ドリル</h1>
+      <div class="tabs" id="tabs" aria-label="出題の種類">
+        <button type="button" data-tab="hanfu">翻・符</button>
+        <button type="button" data-tab="hand">牌姿</button>
+      </div>
+    </div>
     <p class="sub">答えを出すだけでなく、どこで間違えたかを記録して、自分の苦手を見つけます。</p>
   </header>
-
-  <div class="tabs" id="tabs">
-    <button type="button" data-tab="hanfu">翻・符から</button>
-    <button type="button" data-tab="hand">牌姿から</button>
-  </div>
 
   <div class="controls">
     <div class="seg" id="modeSeg">
