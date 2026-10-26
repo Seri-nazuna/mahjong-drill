@@ -319,6 +319,8 @@ if (typeof document !== 'undefined') {
   const $ = id => document.getElementById(id);
   let current = null;
   let answered = false;
+  // モードごとに、まだ答えていない問題を覚えておく（モードを戻したときに同じ問題を出すため）
+  const pending = { random: null, weak: null };
 
   const rule = () => ({ kiriage: state.kiriage });
 
@@ -348,7 +350,11 @@ if (typeof document !== 'undefined') {
 
   function newQuestion() {
     const focus = state.mode === 'weak' ? weakest() : null;
-    current = generateQuestion(focus, rule(), current);
+    showQuestion(generateQuestion(focus, rule(), current));
+  }
+
+  function showQuestion(q) {
+    current = q;
     answered = false;
     const who = current.dealer ? '親' : '子';
     $('chips').innerHTML =
@@ -431,7 +437,13 @@ if (typeof document !== 'undefined') {
     answered ? newQuestion() : check();
   });
   document.querySelectorAll('#modeSeg button').forEach(b => b.addEventListener('click', () => {
-    state.mode = b.dataset.mode; save(); newQuestion();
+    const next = b.dataset.mode;
+    if (next === state.mode) return;  // 選択中のモードを押しても問題は変えない
+    if (!answered) pending[state.mode] = current;  // 答えていない問題は取っておく
+    state.mode = next; save();
+    const saved = pending[next];
+    pending[next] = null;
+    saved ? showQuestion(saved) : newQuestion();
   }));
   $('kiriage').addEventListener('change', e => {
     // 出題中の問題はそのままにして、ルールだけ切り替える（答え合わせは新しいルールで行う）
@@ -440,7 +452,9 @@ if (typeof document !== 'undefined') {
   $('reset').addEventListener('click', () => {
     if (!confirm('成績と苦手の記録をリセットしますか？')) return;
     const keep = { mode: state.mode, kiriage: state.kiriage };
-    state = Object.assign(fresh(), keep); save(); renderStats(); newQuestion();
+    state = Object.assign(fresh(), keep); save();
+    pending.random = pending.weak = null;
+    renderStats(); newQuestion();
   });
 
   renderStats();
